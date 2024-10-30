@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <cstdint>
 #include <fcntl.h>
+#include <getopt.h>
 
 size_t read_fully(int fd, char *buffer, size_t sz) {
   size_t offset = 0;
@@ -282,28 +283,92 @@ int LENGTH = 128;
 const char* HELP_STR =
   R"(The program works similar to 'cat', but encodes input adding redundancy codes to its output.
 With -d parameter it decodes the redundant file and corrects errors.
-It can restore upto %ld corrupted consecutive bytes every %lld bytes
+It can restore up to %ld corrupted consecutive bytes every %lld bytes.
+Usage:
+  ham [options] <source_file >encoded_file
+  ham -d [options] <encoded_file >recovered_file
+
+Options:
+  -h, --help        Show this help message and exit.
+  -d, --decode      Decode a file with error correction.
+  -i, --input FILE    Specify the input file (default: standard input).
+  -o, --output FILE   Specify the output file (default: standard output).
 )";
 
-int main(int argc, char **argv) {
+void print_help() {
+  // Calculate stride based on LENGTH and custom isCode function
   int stride = 0;
   for (int i = 0; i < LENGTH; i++) {
     if (isCode(i)) continue;
     stride++;
   }
+  fprintf(stderr, HELP_STR, BLOCK_SIZE, static_cast<long long>(BLOCK_SIZE) * stride);
+}
 
-  if (argc > 1) {
-    if (std::string("-h") == argv[1]) {
-      fprintf(stderr, HELP_STR, BLOCK_SIZE, BLOCK_SIZE * stride);
-      return 0;
-    }
-    if (std::string("-d") == std::string(argv[1])) {
-      Decoder e(STDIN_FILENO, STDOUT_FILENO, BLOCK_SIZE, LENGTH);
-      while(e.decode()) {}
-      exit(0);
+int main(int argc, char** argv) {
+  bool decode_mode = false;
+  int in = STDIN_FILENO;
+  int out = STDOUT_FILENO;
+
+  const char* input_filename = nullptr;
+  const char* output_filename = nullptr;
+
+  // Define long and short options
+  const char* short_opts = "hdi:o:";
+  const struct option long_opts[] = {
+      {"help",   no_argument,       nullptr, 'h'},
+      {"decode", no_argument,       nullptr, 'd'},
+      {"input",  required_argument, nullptr, 'i'},
+      {"output", required_argument, nullptr, 'o'},
+      {nullptr,  0,                 nullptr,  0 }
+  };
+
+  // Parse command line options
+  int opt;
+  while ((opt = getopt_long(argc, argv, short_opts, long_opts, nullptr)) != -1) {
+    switch (opt) {
+      case 'h':  // help
+        print_help();
+        return 0;
+      case 'd':  // decode
+        decode_mode = true;
+        break;
+      case 'i':  // input file
+        input_filename = optarg;
+        break;
+      case 'o':  // output file
+        output_filename = optarg;
+        break;
+      default:
+        print_help();
+        return 1;
     }
   }
 
-  Encoder e(STDIN_FILENO, STDOUT_FILENO, BLOCK_SIZE, LENGTH);
-  while(e.encode()) {}
+  if (input_filename) {
+    in = open(input_filename, O_RDONLY, 0);
+    if (in == -1) {
+      perror("open input");
+      exit(1);
+    }
+  }
+
+  if (output_filename) {
+    out = open(output_filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (out == -1) {
+      perror("open output");
+      exit(1);
+    }
+  }
+
+
+  if (decode_mode) {
+    Decoder e(in, out, BLOCK_SIZE, LENGTH);
+    while (e.decode()) {}
+  } else {
+    Encoder e(in, out, BLOCK_SIZE, LENGTH);
+    while (e.encode()) {}
+  }
+
+  return 0;
 }
