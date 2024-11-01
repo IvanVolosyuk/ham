@@ -1,6 +1,9 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <unordered_set>
+#include <string>
+
 class GP {
 public:
   explicit GP(uint32_t v) : v(v) {};
@@ -98,12 +101,63 @@ private:
   uint32_t v;
 };
 
-int main(int argc, char** argv) {
-  // Inverse
-  for (int x = 1; x < 256; x++) {
-    for (int y = 1; y < 256; y++) {
-      if (GP(x) * GP(y) == GP(1)) { printf("%d, ", y); }
+void find_primitive_polynomials(int bits) {
+    for (uint32_t P = (1 << bits); P < (1 << (bits + 1)); P++) {
+        uint32_t v = 1;
+        std::unordered_set<uint32_t> values;
+        bool fail = false;
+        for (int i = 0; i < (1 << bits) - 1; i++) {
+            v *= 2;
+            if (v >= (1 << bits)) {
+                v ^= P;
+            }
+            auto res = values.insert(v);
+            if (!res.second) { fail = true; break; }
+        }
+        if (!fail) {
+            printf("%d: ", P);
+            std::string sep = "";
+            for (int i = 20; i >= 0; i--) {
+                if (P & (1 << i)) {
+                    if (i == 0) {
+                        printf("%s1", sep.c_str());
+                    } else {
+                        printf("%sx%d", sep.c_str(), i);
+                    }
+                    sep = " + ";
+                }
+            }
+            printf("\n");
+        }
     }
-  }
-  printf("\n");
+}
+
+void find_elements(uint32_t P, int bits) {
+    uint32_t v = 1;
+    for (uint32_t i = 0; i < (1 << bits) - 1; i++) {
+        printf("%3d: %3d: ", i, v);
+        std::string sep = "";
+        for (int i = 20; i >= 0; i--) {
+            if (v & (1 << i)) {
+                if (i == 0) {
+                    printf("%s1", sep.c_str());
+                } else if (i == 1) {
+                    printf("%sx", sep.c_str());
+                } else {
+                    printf("%sx%d", sep.c_str(), i);
+                }
+                sep = " + ";
+            }
+        }
+        printf("\n");
+        v *= 2;
+        if (v >= (1 << bits)) {
+            v ^= P;
+        }
+    }
+}
+
+int main(int argc, char** argv) {
+    find_primitive_polynomials(3);
+    find_elements(11, 3);
 }
